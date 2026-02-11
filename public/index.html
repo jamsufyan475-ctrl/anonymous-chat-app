@@ -1,72 +1,51 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Anonymous Chat App</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
-            margin: 0;
-            padding: 0;
-        }
-        #chat-container {
-            width: 80%;
-            margin: auto;
-            max-width: 600px;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        #messages {
-            height: 400px;
-            overflow-y: scroll;
-            padding: 10px;
-            border-bottom: 1px solid #ccc;
-        }
-        #message-input {
-            display: flex;
-            padding: 10px;
-        }
-        #message-input input {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            margin-right: 10px;
-        }
-        #message-input button {
-            padding: 10px;
-            background: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Anonymous Chat</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-    <div id="chat-container">
-        <div id="messages"></div>
-        <div id="message-input">
-            <input type="text" id="message" placeholder="Type your message..." />
-            <button onclick="sendMessage()">Send</button>
-        </div>
-    </div>
-    <script>
-        function sendMessage() {
-            const messageInput = document.getElementById('message');
-            const messageText = messageInput.value;
-            if (messageText.trim() !== '') {
-                const messageElement = document.createElement('div');
-                messageElement.textContent = messageText;
-                document.getElementById('messages').appendChild(messageElement);
-                messageInput.value = '';
-                document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
-            }
-        }
-    </script>
+  <div id="app">
+    <aside id="sidebar" class="sidebar">
+      <div class="brand">Anonymous Chat</div>
+      <form id="entryForm">
+        <h3>Enter Chat</h3>
+        <input id="nickname" placeholder="Nickname (2-20)" minlength="2" maxlength="20" required>
+        <select id="country"></select>
+        <select id="gender">
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+        </select>
+        <button type="submit">Enter</button>
+      </form>
+
+      <nav class="rooms">
+        <button data-room="global" class="active">🌍 Global</button>
+        <button data-room="m2m">👨 M2M</button>
+        <button data-room="m2f">👩‍❤️‍👨 M2F</button>
+        <button data-room="f2f">👩 F2F</button>
+      </nav>
+    </aside>
+
+    <main class="chat">
+      <header class="chat-header">
+        <div id="roomTitle">Global</div>
+        <div id="userInfo"></div>
+      </header>
+
+      <ul id="messages" class="messages"></ul>
+
+      <div class="composer">
+        <input id="messageInput" placeholder="Type a message...">
+        <button id="sendBtn">Send</button>
+      </div>
+    </main>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/app.js"></script>
 </body>
 </html>
