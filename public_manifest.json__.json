@@ -1,0 +1,9 @@
+{
+  "name": "GlobalChat - Anonymous Messaging",
+  "short_name": "GlobalChat",
+  "description": "Connect anonymously with people around the world",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#4a6fa5"
+}

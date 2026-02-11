@@ -1,361 +1,410 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const socketIO = require('socket.io');
 const session = require('express-session');
-const crypto = require('crypto');
+const cookieParser = require('cookie-parser');
+const compression = require('compression');
+const helmet = require('helmet');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
-});
+const io = socketIO(server);
 
-// ==================== CONFIG ====================
-const ADMIN_SECRET = crypto.randomBytes(8).toString('hex');
-const ADMIN_URL = `/admin-${ADMIN_SECRET}-dashboard`;
-const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const PORT = process.env.PORT || 3000;
+// ============ CONFIG ============
+const CONFIG = {
+    MAX_MESSAGES_PER_ROOM: 30,
+    MAX_PRIVATE_MESSAGES: 50,
+    MAX_USERS: 100,
+    MAX_MESSAGE_LENGTH: 300,
+    CLEANUP_INTERVAL: 1800000,
+    INACTIVE_TIMEOUT: 900000
+};
 
-// ==================== IN-MEMORY STORES ====================
-const users = new Map(); // socketId -> {nickname, country, gender, ip, room, status, muted, muteEnd}
-const messages = new Map(); // room -> [array of messages]
-const bannedIPs = new Set();
-const rooms = ['global', 'm2m', 'm2f', 'f2f'];
-const MAX_USERS = 100;
-const MAX_MESSAGES_PER_ROOM = 100;
-const MESSAGE_RETENTION_MS = 24 * 60 * 60 * 1000; // 24 hours
+// ============ ADMIN CONFIG ============
+const ADMIN_USERNAME = 'admin';
+const ADMIN_PASSWORD = 'admin123';
+let adminSessions = new Set();
 
-rooms.forEach(room => {
-  messages.set(room, []);
-});
+// ============ DATA STORAGE ============
+let users = [];
+let messages = {
+    global: [],
+    male_female: [],
+    male_male: [],
+    female_female: []
+};
+let privateMessages = [];
+let reports = [];
+let bannedUsers = new Set();
+let bannedIPs = new Set();
+let autoUsers = [];
 
-// ==================== SESSION SETUP ====================
-app.use(session({
-  secret: SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: { secure: false, httpOnly: true, maxAge: 60 * 60 * 1000 } // 1 hour
-}));
+// ============ COUNTRIES ============
+const countries = [
+    { code: 'US', name: 'United States', flag: '🇺🇸' },
+    { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
+    { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+    { code: 'AU', name: 'Australia', flag: '🇦🇺' },
+    { code: 'DE', name: 'Germany', flag: '🇩🇪' },
+    { code: 'FR', name: 'France', flag: '🇫🇷' },
+    { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+    { code: 'IN', name: 'India', flag: '🇮🇳' },
+    { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
+    { code: 'PK', name: 'Pakistan', flag: '🇵🇰' },
+    { code: 'NG', name: 'Nigeria', flag: '🇳🇬' },
+    { code: 'RU', name: 'Russia', flag: '🇷🇺' },
+    { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+    { code: 'ID', name: 'Indonesia', flag: '🇮🇩' },
+    { code: 'TR', name: 'Turkey', flag: '🇹🇷' }
+];
 
+// ============ AUTO MESSAGES ============
+const AUTO_MESSAGES = [
+    "Just joined this awesome chat! 👋",
+    "Anyone here from Asia? 🌏",
+    "What's everyone talking about? 💬",
+    "This platform is so fast! ⚡",
+    "Nice to meet you all! 🤝",
+    "Working from home today 💻",
+    "The weather is beautiful ☀️",
+    "Any music recommendations? 🎵",
+    "Just had coffee ☕",
+    "Good morning/evening everyone! 🌙"
+];
+
+// ============ CREATE AUTO USERS ============
+function createAutoUsers() {
+    const names = ['Sarah', 'Mike', 'Emma', 'Alex', 'Lisa'];
+    const genders = ['Female', 'Male', 'Female', 'Male', 'Female'];
+    const countryCodes = ['US', 'GB', 'CA', 'AU', 'DE'];
+    
+    for (let i = 0; i < 5; i++) {
+        const country = countries.find(c => c.code === countryCodes[i]);
+        autoUsers.push({
+            id: `auto_${i}_${Date.now()}`,
+            nickname: names[i],
+            gender: genders[i],
+            country: country,
+            online: true,
+            currentRoom: 'global',
+            isAuto: true
+        });
+    }
+}
+
+// ============ START AUTO MESSAGES ============
+function startAutoMessages() {
+    setInterval(() => {
+        const realUsersOnline = users.filter(u => u.online && !u.isAuto).length;
+        if (realUsersOnline === 0) return;
+        
+        const autoUser = autoUsers[Math.floor(Math.random() * autoUsers.length)];
+        if (!autoUser) return;
+        
+        const rooms = ['global', 'male_female', 'male_male', 'female_female'];
+        const room = rooms[Math.floor(Math.random() * rooms.length)];
+        
+        if (room === 'male_male' && autoUser.gender !== 'Male') return;
+        if (room === 'female_female' && autoUser.gender !== 'Female') return;
+        
+        const message = {
+            id: `auto_${Date.now()}`,
+            userId: autoUser.id,
+            username: autoUser.nickname,
+            gender: autoUser.gender,
+            country: autoUser.country,
+            content: AUTO_MESSAGES[Math.floor(Math.random() * AUTO_MESSAGES.length)],
+            timestamp: new Date(),
+            room: room,
+            isAuto: true
+        };
+        
+        messages[room].push(message);
+        if (messages[room].length > CONFIG.MAX_MESSAGES_PER_ROOM) {
+            messages[room].shift();
+        }
+        
+        io.to(room).emit('new_message', message);
+    }, 45000);
+}
+
+// ============ MIDDLEWARE ============
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(compression());
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const sessionMiddleware = session({
+    secret: 'global-chat-secret-2024',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+});
+
+app.use(sessionMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ==================== ROUTES: MAIN SITE ====================
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// ============ API ============
+app.get('/api/countries', (req, res) => res.json(countries));
+app.get('/health', (req, res) => res.json({ status: 'healthy' }));
+
+// ============ SOCKET.IO ============
+io.use((socket, next) => {
+    sessionMiddleware(socket.request, {}, next);
 });
 
-// ==================== ROUTES: ADMIN LOGIN ====================
-app.get(ADMIN_URL, (req, res) => {
-  if (req.session.adminLoggedIn) {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-  } else {
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Admin Login</title>
-        <style>
-          body { font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-          .login-box { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); text-align: center; }
-          input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-          button { width: 100%; padding: 10px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-          button:hover { background: #764ba2; }
-          h2 { color: #333; }
-          .error { color: red; margin-top: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="login-box">
-          <h2>🔐 Admin Login</h2>
-          <form method="POST" action="${ADMIN_URL}/login">
-            <input type="text" name="username" placeholder="Username" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">Login</button>
-          </form>
-          ${req.query.error ? '<p class="error">Invalid credentials</p>' : ''}
-        </div>
-      </body>
-      </html>
-    `);
-  }
-});
+function broadcastOnlineUsers() {
+    const onlineUsers = users.filter(u => u.online).map(u => ({
+        nickname: u.nickname,
+        gender: u.gender,
+        country: u.country,
+        currentRoom: u.currentRoom,
+        isAuto: u.isAuto || false
+    }));
+    io.emit('online_users', onlineUsers);
+}
 
-app.post(`${ADMIN_URL}/login`, (req, res) => {
-  const { username, password } = req.body;
-  if (username === ADMIN_USER && password === ADMIN_PASS) {
-    req.session.adminLoggedIn = true;
-    res.redirect(ADMIN_URL);
-  } else {
-    res.redirect(`${ADMIN_URL}?error=1`);
-  }
-});
+function updateOnlineCounts() {
+    const rooms = ['global', 'male_female', 'male_male', 'female_female'];
+    rooms.forEach(room => {
+        const count = users.filter(u => u.online && u.currentRoom === room).length;
+        io.to(room).emit('online_count', { room, count });
+    });
+}
 
-app.get(`${ADMIN_URL}/logout`, (req, res) => {
-  req.session.destroy();
-  res.redirect(ADMIN_URL);
-});
-
-// ==================== SOCKET.IO HANDLERS ====================
 io.on('connection', (socket) => {
-  console.log(`[CONNECT] Socket: ${socket.id}, IP: ${socket.handshake.address}`);
-
-  // Check if IP is banned
-  const clientIP = socket.handshake.address;
-  if (bannedIPs.has(clientIP)) {
-    socket.disconnect(true);
-    return;
-  }
-
-  // ===== USER JOIN =====
-  socket.on('user_join', (data) => {
-    const { nickname, country, gender } = data;
-
-    // Validate input
-    if (!nickname || nickname.length < 2 || nickname.length > 20) {
-      socket.emit('error', 'Invalid nickname');
-      return;
-    }
-    if (!country) {
-      socket.emit('error', 'Country required');
-      return;
-    }
-    if (gender !== 'Male' && gender !== 'Female') {
-      socket.emit('error', 'Invalid gender');
-      return;
-    }
-
-    // Determine room based on gender
-    let room = 'global';
-    if (gender === 'Male') room = 'm2m';
-    if (gender === 'Female') room = 'f2f';
-    // Note: m2f is manually joined via 'join_m2f' event
-
-    // Cap users
-    if (users.size >= MAX_USERS) {
-      socket.emit('error', 'Server full');
-      return;
-    }
-
-    // Store user
-    const userObj = {
-      nickname,
-      country,
-      gender,
-      ip: clientIP,
-      room,
-      status: 'online',
-      muted: false,
-      muteEnd: null,
-      joinedAt: Date.now()
-    };
-
-    users.set(socket.id, userObj);
-    socket.join(room);
-
-    console.log(`[JOIN] ${nickname} joined ${room}`);
-
-    // Notify room (but DON'T show user list or online status to other users)
-    io.to(room).emit('user_joined', {
-      nickname,
-      country,
-      message: `${nickname} joined the chat`
-    });
-
-    // Broadcast to admin
-    io.to('admin_namespace').emit('admin_user_joined', {
-      socketId: socket.id,
-      ...userObj
-    });
-  });
-
-  // ===== JOIN M2F ROOM =====
-  socket.on('join_m2f', () => {
-    const user = users.get(socket.id);
-    if (!user) return;
-
-    socket.leave(user.room);
-    user.room = 'm2f';
-    socket.join('m2f');
-
-    io.to('m2f').emit('user_joined', {
-      nickname: user.nickname,
-      country: user.country,
-      message: `${user.nickname} joined M2F`
-    });
-
-    io.to('admin_namespace').emit('admin_user_room_change', {
-      socketId: socket.id,
-      newRoom: 'm2f'
-    });
-  });
-
-  // ===== SEND MESSAGE =====
-  socket.on('send_message', (data) => {
-    const user = users.get(socket.id);
-    if (!user) return;
-
-    // Check if muted
-    if (user.muted && user.muteEnd > Date.now()) {
-      socket.emit('error', 'You are muted');
-      return;
-    } else {
-      user.muted = false;
-    }
-
-    const { text } = data;
-    if (!text || text.trim().length === 0) return;
-
-    const message = {
-      id: crypto.randomUUID(),
-      nickname: user.nickname,
-      country: user.country,
-      text: text.trim(),
-      timestamp: new Date().toISOString(),
-      room: user.room
-    };
-
-    // Store message
-    const roomMessages = messages.get(user.room);
-    if (roomMessages.length >= MAX_MESSAGES_PER_ROOM) {
-      roomMessages.shift(); // FIFO
-    }
-    roomMessages.push(message);
-
-    // Broadcast to room (NO IP, NO status)
-    io.to(user.room).emit('receive_message', {
-      nickname: message.nickname,
-      country: message.country,
-      text: message.text,
-      timestamp: message.timestamp
-    });
-
-    // Broadcast to admin with full details
-    io.to('admin_namespace').emit('admin_message', message);
-  });
-
-  // ===== TYPING INDICATOR =====
-  socket.on('typing', () => {
-    const user = users.get(socket.id);
-    if (!user) return;
-
-    io.to(user.room).emit('user_typing', {
-      nickname: user.nickname
-    });
-  });
-
-  socket.on('stop_typing', () => {
-    const user = users.get(socket.id);
-    if (!user) return;
-
-    io.to(user.room).emit('user_stop_typing', {
-      nickname: user.nickname
-    });
-  });
-
-  // ===== ADMIN NAMESPACE =====
-  socket.on('admin_connect', (adminToken) => {
-    // In production, verify admin token properly
-    if (adminToken === 'admin') {
-      socket.join('admin_namespace');
-      console.log('[ADMIN] Connected');
-
-      // Send current state
-      const usersArray = Array.from(users.values()).map((u, idx) => ({
-        socketId: Array.from(users.keys())[idx],
-        ...u
-      }));
-
-      socket.emit('admin_state', {
-        users: usersArray,
-        messages: Object.fromEntries(messages),
-        bannedIPs: Array.from(bannedIPs)
-      });
-    }
-  });
-
-  socket.on('admin_block_user', (data) => {
-    const { socketId } = data;
-    const user = users.get(socketId);
-    if (user) {
-      bannedIPs.add(user.ip);
-      io.to(socketId).emit('error', 'You have been blocked');
-      io.sockets.sockets.get(socketId)?.disconnect(true);
-      users.delete(socketId);
-    }
-  });
-
-  socket.on('admin_mute_user', (data) => {
-    const { socketId, duration } = data; // duration in ms
-    const user = users.get(socketId);
-    if (user) {
-      user.muted = true;
-      user.muteEnd = Date.now() + duration;
-      io.to('admin_namespace').emit('admin_user_muted', {
-        socketId,
-        muteEnd: user.muteEnd
-      });
-    }
-  });
-
-  socket.on('admin_delete_message', (data) => {
-    const { room, messageId } = data;
-    const roomMessages = messages.get(room);
-    if (roomMessages) {
-      const idx = roomMessages.findIndex(m => m.id === messageId);
-      if (idx !== -1) {
-        roomMessages.splice(idx, 1);
-        io.to('admin_namespace').emit('admin_message_deleted', {
-          room,
-          messageId
+    console.log('🔵 User connected:', socket.id);
+    
+    socket.on('user_login', (data) => {
+        if (bannedUsers.has(data.nickname)) {
+            socket.emit('login_error', { message: 'Username is banned' });
+            return;
+        }
+        
+        if (users.length >= CONFIG.MAX_USERS) {
+            socket.emit('login_error', { message: 'Server is full' });
+            return;
+        }
+        
+        const country = countries.find(c => c.code === data.countryCode);
+        if (!country) return;
+        
+        const user = {
+            id: socket.id,
+            nickname: data.nickname,
+            gender: data.gender,
+            country: country,
+            online: true,
+            currentRoom: 'global',
+            socketId: socket.id,
+            lastActivity: new Date(),
+            isAuto: false
+        };
+        
+        users.push(user);
+        socket.userData = user;
+        socket.join('global');
+        
+        socket.emit('login_success', {
+            user: user,
+            recentMessages: messages.global.slice(-CONFIG.MAX_MESSAGES_PER_ROOM)
         });
-      }
-    }
-  });
-
-  socket.on('admin_export_logs', () => {
-    const logsData = {
-      timestamp: new Date().toISOString(),
-      users: Array.from(users.values()),
-      messages: Object.fromEntries(messages),
-      bannedIPs: Array.from(bannedIPs)
-    };
-    socket.emit('admin_logs_export', JSON.stringify(logsData, null, 2));
-  });
-
-  // ===== DISCONNECT =====
-  socket.on('disconnect', () => {
-    const user = users.get(socket.id);
-    if (user) {
-      console.log(`[DISCONNECT] ${user.nickname} from ${user.room}`);
-      users.delete(socket.id);
-
-      io.to('admin_namespace').emit('admin_user_disconnected', {
-        socketId: socket.id
-      });
-    }
-  });
+        
+        io.emit('online_count', users.filter(u => u.online).length);
+        updateOnlineCounts();
+        broadcastOnlineUsers();
+    });
+    
+    socket.on('request_online_users', () => broadcastOnlineUsers());
+    
+    socket.on('join_room', (room) => {
+        if (!socket.userData) return;
+        socket.leave(socket.userData.currentRoom);
+        socket.join(room);
+        socket.userData.currentRoom = room;
+        socket.userData.lastActivity = new Date();
+        socket.emit('room_messages', messages[room].slice(-CONFIG.MAX_MESSAGES_PER_ROOM));
+        updateOnlineCounts();
+        broadcastOnlineUsers();
+    });
+    
+    socket.on('send_message', (data) => {
+        if (!socket.userData) return;
+        if (bannedUsers.has(socket.userData.nickname)) return;
+        
+        socket.userData.lastActivity = new Date();
+        
+        const message = {
+            id: `msg_${Date.now()}_${socket.id}`,
+            userId: socket.userData.id,
+            username: socket.userData.nickname,
+            gender: socket.userData.gender,
+            country: socket.userData.country,
+            content: data.content.substring(0, CONFIG.MAX_MESSAGE_LENGTH),
+            timestamp: new Date(),
+            room: socket.userData.currentRoom,
+            isAuto: false
+        };
+        
+        messages[socket.userData.currentRoom].push(message);
+        if (messages[socket.userData.currentRoom].length > CONFIG.MAX_MESSAGES_PER_ROOM) {
+            messages[socket.userData.currentRoom].shift();
+        }
+        
+        io.to(socket.userData.currentRoom).emit('new_message', message);
+    });
+    
+    socket.on('private_message', (data) => {
+        const sender = socket.userData;
+        if (!sender) return;
+        
+        const recipient = users.find(u => u.nickname === data.recipient && u.online);
+        if (!recipient) {
+            socket.emit('error', { message: 'User offline' });
+            return;
+        }
+        
+        const pm = {
+            id: `pm_${Date.now()}`,
+            from: sender.nickname,
+            to: recipient.nickname,
+            content: data.content.substring(0, CONFIG.MAX_MESSAGE_LENGTH),
+            timestamp: new Date()
+        };
+        
+        privateMessages.push(pm);
+        if (privateMessages.length > CONFIG.MAX_PRIVATE_MESSAGES) {
+            privateMessages.shift();
+        }
+        
+        const recipientSocket = io.sockets.sockets.get(recipient.id);
+        if (recipientSocket) {
+            recipientSocket.emit('private_message', pm);
+        }
+        socket.emit('private_message_sent', pm);
+    });
+    
+    socket.on('admin_login', (data) => {
+        if (data.username === ADMIN_USERNAME && data.password === ADMIN_PASSWORD) {
+            const sessionId = `admin_${Date.now()}`;
+            adminSessions.add(sessionId);
+            socket.adminSession = sessionId;
+            
+            socket.emit('admin_login_success', {
+                stats: {
+                    totalUsers: users.length,
+                    onlineUsers: users.filter(u => u.online).length,
+                    totalMessages: Object.values(messages).reduce((a, b) => a + b.length, 0),
+                    totalPrivateMessages: privateMessages.length,
+                    usersByRoom: {
+                        global: users.filter(u => u.online && u.currentRoom === 'global').length,
+                        male_female: users.filter(u => u.online && u.currentRoom === 'male_female').length,
+                        male_male: users.filter(u => u.online && u.currentRoom === 'male_male').length,
+                        female_female: users.filter(u => u.online && u.currentRoom === 'female_female').length
+                    }
+                },
+                users: users.filter(u => u.online).map(u => ({
+                    nickname: u.nickname,
+                    gender: u.gender,
+                    country: u.country,
+                    currentRoom: u.currentRoom,
+                    isAuto: u.isAuto || false
+                })),
+                messages: messages,
+                privateMessages: privateMessages.slice(-30),
+                reports: reports.slice(-20)
+            });
+        } else {
+            socket.emit('admin_login_error', { message: 'Invalid credentials' });
+        }
+    });
+    
+    socket.on('admin_action', (action) => {
+        if (!socket.adminSession || !adminSessions.has(socket.adminSession)) return;
+        
+        switch(action.type) {
+            case 'delete_message':
+                if (messages[action.room]) {
+                    messages[action.room] = messages[action.room].filter(m => m.id !== action.messageId);
+                    io.to(action.room).emit('message_deleted', { messageId: action.messageId });
+                }
+                break;
+            case 'ban_user':
+                bannedUsers.add(action.username);
+                const userToBan = users.find(u => u.nickname === action.username);
+                if (userToBan && userToBan.socketId) {
+                    const userSocket = io.sockets.sockets.get(userToBan.socketId);
+                    if (userSocket) {
+                        userSocket.emit('banned', { message: 'You have been banned' });
+                        userSocket.disconnect();
+                    }
+                }
+                break;
+            case 'ban_ip':
+                bannedIPs.add(action.ip);
+                users.filter(u => u.ip === action.ip).forEach(u => {
+                    const userSocket = io.sockets.sockets.get(u.socketId);
+                    if (userSocket) {
+                        userSocket.emit('banned', { message: 'Your IP has been banned' });
+                        userSocket.disconnect();
+                    }
+                });
+                break;
+            case 'resolve_report':
+                const report = reports.find(r => r.id === action.reportId);
+                if (report) report.status = 'resolved';
+                break;
+        }
+    });
+    
+    socket.on('report_message', (data) => {
+        const report = {
+            id: `report_${Date.now()}`,
+            messageId: data.messageId,
+            reportedUser: data.reportedUser,
+            reportedBy: socket.userData?.nickname || 'Anonymous',
+            reason: data.reason,
+            timestamp: new Date(),
+            status: 'pending'
+        };
+        reports.push(report);
+        if (reports.length > 50) reports.shift();
+        socket.emit('report_submitted', { success: true });
+    });
+    
+    socket.on('disconnect', () => {
+        if (socket.userData) {
+            socket.userData.online = false;
+            users = users.filter(u => u.id !== socket.id);
+            io.emit('online_count', users.filter(u => u.online).length);
+            updateOnlineCounts();
+            broadcastOnlineUsers();
+        }
+    });
 });
 
-// ==================== AUTO CLEANUP ====================
+// ============ CLEANUP ============
 setInterval(() => {
-  rooms.forEach(room => {
-    const roomMessages = messages.get(room);
-    const now = Date.now();
-    // Remove messages older than 24 hours
-    const filtered = roomMessages.filter(m => (now - new Date(m.timestamp).getTime()) < MESSAGE_RETENTION_MS);
-    messages.set(room, filtered);
-  });
-}, 60 * 60 * 1000); // Every hour
+    const now = new Date();
+    users = users.filter(user => {
+        if (!user.online) return false;
+        return (now - user.lastActivity) < CONFIG.INACTIVE_TIMEOUT;
+    });
+}, CONFIG.CLEANUP_INTERVAL);
 
-// ==================== START SERVER ====================
-server.listen(PORT, () => {
-  console.log(`\n🚀 Chat Server running on http://localhost:${PORT}`);
-  console.log(`🔐 Admin URL: http://localhost:${PORT}${ADMIN_URL}`);
-  console.log(`👤 Admin User: ${ADMIN_USER}`);
-  console.log(`🔑 Admin Pass: ${ADMIN_PASS}\n`);
+// ============ INITIALIZE ============
+createAutoUsers();
+startAutoMessages();
+
+// ============ START SERVER ============
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🚀 GLOBAL CHAT RUNNING!`);
+    console.log(`📡 Port: ${PORT}`);
+    console.log(`👥 Max users: ${CONFIG.MAX_USERS}`);
+    console.log(`🤖 Auto users: 5`);
+    console.log(`🛡️ Admin: admin / admin123`);
+    console.log(`🌍 Ready!\n`);
 });

@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - GlobalChat</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .admin-dashboard {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+        
+        .admin-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            color: var(--gray);
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+        
+        .stat-card p {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        
+        .admin-tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .admin-tab {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 0.95rem;
+            border-bottom: 3px solid transparent;
+        }
+        
+        .admin-tab.active {
+            border-bottom-color: var(--primary);
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        .admin-panel {
+            display: none;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            overflow-x: auto;
+        }
+        
+        .admin-panel.active {
+            display: block;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        
+        .data-table th {
+            background: var(--light);
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 2px solid var(--border);
+        }
+        
+        .data-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .data-table tr:hover {
+            background: var(--light);
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .badge-online {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge-offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .badge-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .badge-auto {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .action-btn {
+            padding: 0.4rem 0.75rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin: 0 0.25rem;
+        }
+        
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .btn-warning {
+            background: var(--warning);
+            color: var(--dark);
+        }
+        
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        
+        .room-filters {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .room-filter {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border);
+            background: white;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        
+        .room-filter.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        
+        @media (max-width: 768px) {
+            .admin-stats {
+                grid-template-columns: 1fr;
+            }
+            
+            .admin-tabs {
+                flex-direction: column;
+            }
+            
+            .data-table {
+                font-size: 0.8rem;
+            }
+            
+            td, th {
+                padding: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">🌍 GlobalChat Admin</a>
+            <div class="nav-links">
+                <a href="/">Back to Chat</a>
+                <a href="#" onclick="logout()">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="admin-dashboard" id="dashboard" style="display: none;">
+        <h1>Admin Dashboard</h1>
+        
+        <div class="admin-stats" id="stats-container"></div>
+
+        <div class="admin-tabs">
+            <button class="admin-tab active" onclick="switchTab('users')">👥 Users</button>
+            <button class="admin-tab" onclick="switchTab('messages')">💬 Messages</button>
+            <button class="admin-tab" onclick="switchTab('private')">🔒 Private</button>
+            <button class="admin-tab" onclick="switchTab('reports')">📋 Reports</button>
+        </div>
+
+        <div id="users-panel" class="admin-panel active">
+            <h2>Online Users</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Gender</th>
+                        <th>Country</th>
+                        <th>Room</th>
+                        <th>Type</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body"></tbody>
+            </table>
+        </div>
+
+        <div id="messages-panel" class="admin-panel">
+            <h2>Live Messages</h2>
+            <div class="room-filters">
+                <button class="room-filter active" onclick="filterRoom('global')">🌍 Global</button>
+                <button class="room-filter" onclick="filterRoom('male_female')">👥 Male-Female</button>
+                <button class="room-filter" onclick="filterRoom('male_male')">👨 Male-Male</button>
+                <button class="room-filter" onclick="filterRoom('female_female')">👩 Female-Female</button>
+            </div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>User</th>
+                        <th>Message</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="messages-table-body"></tbody>
+            </table>
+        </div>
+
+        <div id="private-panel" class="admin-panel">
+            <h2>Private Messages</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Message</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="private-table-body"></tbody>
+            </table>
+        </div>
+
+        <div id="reports-panel" class="admin-panel">
+            <h2>User Reports</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Reported User</th>
+                        <th>Reason</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="reports-table-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="login-form" style="max-width: 400px; margin: 100px auto; text-align: center;">
+        <div style="background: white; padding: 2rem; border-radius: 10px; box-shadow: var(--shadow);">
+            <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Admin Login</h2>
+            <div style="margin-bottom: 1rem;">
+                <input type="text" id="username" placeholder="Username" value="admin" style="width: 100%; padding: 0.75rem; border: 2px solid var(--border); border-radius: 6px;">
+            </div>
+            <div style="margin-bottom: 1.5rem;">
+                <input type="password" id="password" placeholder="Password" style="width: 100%; padding: 0.75rem; border: 2px solid var(--border); border-radius: 6px;">
+            </div>
+            <button onclick="adminLogin()" class="btn btn-primary" style="width: 100%;">Login</button>
+            <div id="login-error" style="color: var(--danger); margin-top: 1rem;"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let adminData = null;
+        let currentRoom = 'global';
+
+        function adminLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            socket.emit('admin_login', { username, password });
+        }
+
+        socket.on('admin_login_success', (data) => {
+            adminData = data;
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+            updateDashboard();
+        });
+
+        socket.on('admin_login_error', (error) => {
+            document.getElementById('login-error').textContent = error.message;
+        });
+
+        socket.on('admin_update', (stats) => {
+            if (adminData) {
+                adminData.stats = stats;
+                updateStats(stats);
+            }
+        });
+
+        function updateDashboard() {
+            if (!adminData) return;
+            updateStats(adminData.stats);
+            updateUsersTable(adminData.users);
+            updateMessagesTable(adminData.messages);
+            updatePrivateMessagesTable(adminData.privateMessages);
+            updateReportsTable(adminData.reports);
+        }
+
+        function updateStats(stats) {
+            const container = document.getElementById('stats-container');
+            container.innerHTML = `
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <p>${stats.totalUsers}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Online Now</h3>
+                    <p>${stats.onlineUsers}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Messages</h3>
+                    <p>${stats.totalMessages}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Private</h3>
+                    <p>${stats.totalPrivateMessages}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>🌍 Global</h3>
+                    <p>${stats.usersByRoom.global}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>👥 M-F</h3>
+                    <p>${stats.usersByRoom.male_female}</p>
+                </div>
+            `;
+        }
+
+        function updateUsersTable(users) {
+            const tbody = document.getElementById('users-table-body');
+            tbody.innerHTML = users.map(user => `
+                <tr>
+                    <td>${escapeHtml(user.nickname)}</td>
+                    <td>${user.gender}</td>
+                    <td>${user.country?.flag || '🌍'} ${user.country?.name || ''}</td>
+                    <td>${user.currentRoom}</td>
+                    <td><span class="badge ${user.isAuto ? 'badge-auto' : 'badge-online'}">${user.isAuto ? '🤖 Auto' : '👤 Real'}</span></td>
+                    <td>
+                        <button onclick="banUser('${escapeHtml(user.nickname)}')" class="action-btn btn-danger">Ban</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateMessagesTable(messages) {
+            const tbody = document.getElementById('messages-table-body');
+            tbody.innerHTML = '';
+            
+            if (messages[currentRoom]) {
+                messages[currentRoom].slice(-20).reverse().forEach(msg => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${new Date(msg.timestamp).toLocaleString()}</td>
+                            <td>${escapeHtml(msg.username)} ${msg.isAuto ? '🤖' : ''}</td>
+                            <td>${escapeHtml(msg.content)}</td>
+                            <td>
+                                <button onclick="deleteMessage('${msg.id}', '${msg.room}')" class="action-btn btn-danger">Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+        }
+
+        function updatePrivateMessagesTable(messages) {
+            const tbody = document.getElementById('private-table-body');
+            tbody.innerHTML = messages.slice(-20).reverse().map(msg => `
+                <tr>
+                    <td>${new Date(msg.timestamp).toLocaleString()}</td>
+                    <td>${escapeHtml(msg.from)}</td>
+                    <td>${escapeHtml(msg.to)}</td>
+                    <td>${escapeHtml(msg.content)}</td>
+                    <td>
+                        <button onclick="deletePrivateMessage('${msg.id}')" class="action-btn btn-danger">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateReportsTable(reports) {
+            const tbody = document.getElementById('reports-table-body');
+            tbody.innerHTML = reports.slice(-20).reverse().map(report => `
+                <tr>
+                    <td>${new Date(report.timestamp).toLocaleString()}</td>
+                    <td>${escapeHtml(report.reportedUser)}</td>
+                    <td>${report.reason}</td>
+                    <td><span class="badge badge-pending">${report.status}</span></td>
+                    <td>
+                        ${report.status === 'pending' ? 
+                            `<button onclick="resolveReport('${report.id}')" class="action-btn btn-success">Resolve</button>` : 
+                            'Resolved'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function filterRoom(room) {
+            currentRoom = room;
+            document.querySelectorAll('.room-filter').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            if (adminData) updateMessagesTable(adminData.messages);
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(tab + '-panel').classList.add('active');
+        }
+
+        function banUser(username) {
+            if (confirm(`Ban user ${username}?`)) {
+                socket.emit('admin_action', { type: 'ban_user', username });
+                adminData.users = adminData.users.filter(u => u.nickname !== username);
+                updateUsersTable(adminData.users);
+            }
+        }
+
+        function deleteMessage(messageId, room) {
+            if (confirm('Delete this message?')) {
+                socket.emit('admin_action', { type: 'delete_message', messageId, room });
+                adminData.messages[room] = adminData.messages[room].filter(m => m.id !== messageId);
+                updateMessagesTable(adminData.messages);
+            }
+        }
+
+        function deletePrivateMessage(messageId) {
+            if (confirm('Delete this private message?')) {
+                socket.emit('admin_action', { type: 'delete_private_message', messageId });
+                adminData.privateMessages = adminData.privateMessages.filter(m => m.id !== messageId);
+                updatePrivateMessagesTable(adminData.privateMessages);
+            }
+        }
+
+        function resolveReport(reportId) {
+            socket.emit('admin_action', { type: 'resolve_report', reportId });
+            const report = adminData.reports.find(r => r.id === reportId);
+            if (report) report.status = 'resolved';
+            updateReportsTable(adminData.reports);
+        }
+
+        function logout() {
+            window.location.href = '/';
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>

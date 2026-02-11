@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <meta name="theme-color" content="#4a6fa5">
+    <meta name="description" content="Global Chat - Anonymous messaging platform">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/css/style.css">
+    <title>Global Chat - Anonymous Messaging</title>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">🌍 GlobalChat</a>
+            <div class="nav-links">
+                <a href="/">Home</a>
+                <a href="#about">About</a>
+                <a href="#privacy">Privacy</a>
+                <a href="#terms">Terms</a>
+                <a href="#contact">Contact</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Home Page -->
+    <div id="home-page" class="page active">
+        <div class="hero">
+            <h1>Connect Anonymously, Globally</h1>
+            <p class="subtitle">No registration. No personal data. Just real conversations.</p>
+            <button onclick="showLogin()" class="btn btn-primary btn-large">Start Chatting</button>
+        </div>
+
+        <div class="features">
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3>100% Anonymous</h3>
+                <p>No email, phone, or personal info required. Just pick a username and join.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3>Real-time Chat</h3>
+                <p>Instant messaging with people from around the world. No delays.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🛡️</div>
+                <h3>Privacy First</h3>
+                <p>We don't store personal data. All messages are temporary.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🌍</div>
+                <h3>Global Community</h3>
+                <p>Connect with users from 190+ countries. Multiple chat rooms.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Page -->
+    <div id="login-page" class="page">
+        <div class="login-container">
+            <h2>Join Global Chat</h2>
+            <p class="login-subtitle">Anonymous. Free. Instant.</p>
+            
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="nickname">Username</label>
+                    <input type="text" id="nickname" name="nickname" maxlength="20" placeholder="Choose a nickname" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="gender">Gender</label>
+                    <select id="gender" name="gender" required>
+                        <option value="" disabled selected>Select gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="country">Country</label>
+                    <select id="country" name="country" required>
+                        <option value="" disabled selected>Select your country</option>
+                    </select>
+                </div>
+
+                <div class="privacy-note">
+                    <p>✓ No personal data stored • ✓ Messages are temporary • ✓ IP anonymized</p>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Enter Chat</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Chat Page -->
+    <div id="chat-page" class="page">
+        <div class="chat-container">
+            <header class="chat-header">
+                <div class="header-left">
+                    <h1>GlobalChat</h1>
+                    <span class="online-badge">👥 <span id="global-online">0</span> online</span>
+                </div>
+                <div class="header-right">
+                    <span id="user-badge"></span>
+                    <button onclick="window.location.href='/admin.html'" class="btn-icon" style="background:rgba(255,255,255,0.2); border:none; color:white; padding:6px 10px; border-radius:6px; margin-left:5px;">🛡️</button>
+                    <button onclick="logout()" class="btn-icon" title="Logout">🚪</button>
+                </div>
+            </header>
+
+            <div class="rooms-bar">
+                <button class="room-btn active" data-room="global" onclick="switchRoom('global')">
+                    🌍 Global <span id="room-count-global">0</span>
+                </button>
+                <button class="room-btn" data-room="male_female" onclick="switchRoom('male_female')">
+                    👥 Male-Female <span id="room-count-male_female">0</span>
+                </button>
+                <button class="room-btn" data-room="male_male" onclick="switchRoom('male_male')">
+                    👨 Male-Male <span id="room-count-male_male">0</span>
+                </button>
+                <button class="room-btn" data-room="female_female" onclick="switchRoom('female_female')">
+                    👩 Female-Female <span id="room-count-female_female">0</span>
+                </button>
+            </div>
+
+            <div class="chat-main">
+                <div class="messages-wrapper">
+                    <div id="messages" class="messages-container"></div>
+                    <div class="message-input-container">
+                        <form id="message-form" onsubmit="sendMessage(event)">
+                            <input type="text" id="message-input" placeholder="Type your message..." maxlength="300" autocomplete="off">
+                            <button type="submit" class="btn-send">Send</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="users-sidebar">
+                    <h3>Online Users</h3>
+                    <div id="users-list" class="users-list"></div>
+                    
+                    <div class="private-messages-header">
+                        <h3>Private Messages</h3>
+                        <span id="pm-badge" class="pm-badge" style="display:none;">●</span>
+                    </div>
+                    <div id="private-messages" class="private-messages-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Modal -->
+    <div id="admin-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAdminModal()">&times;</span>
+            <h2>Admin Login</h2>
+            <form onsubmit="adminLogin(event)">
+                <div class="form-group">
+                    <input type="text" id="admin-username" placeholder="Username" value="admin" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="admin-password" placeholder="Password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="report-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeReportModal()">&times;</span>
+            <h3>Report Message</h3>
+            <form onsubmit="submitReport(event)">
+                <input type="hidden" id="report-message-id">
+                <input type="hidden" id="report-username">
+                <div class="form-group">
+                    <label>Reason for reporting:</label>
+                    <select id="report-reason" required>
+                        <option value="">Select reason</option>
+                        <option value="harassment">Harassment</option>
+                        <option value="spam">Spam</option>
+                        <option value="inappropriate">Inappropriate content</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Submit Report</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

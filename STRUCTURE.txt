@@ -1,0 +1,12 @@
+📁 your-repl/
+   📄 package.json
+   📄 server.js
+   📁 public/
+      📄 index.html
+      📄 admin.html
+      📄 manifest.json
+      📄 sw.js
+      📁 css/
+         📄 style.css
+      📁 js/
+         📄 app.js
