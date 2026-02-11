@@ -1,51 +1,29 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Anonymous Chat</title>
-  <link rel="manifest" href="/manifest.json">
-  <link rel="stylesheet" href="/css/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css/style.css">
+    <title>Anonymous Chat App</title>
 </head>
 <body>
-  <div id="app">
-    <aside id="sidebar" class="sidebar">
-      <div class="brand">Anonymous Chat</div>
-      <form id="entryForm">
-        <h3>Enter Chat</h3>
-        <input id="nickname" placeholder="Nickname (2-20)" minlength="2" maxlength="20" required>
-        <select id="country"></select>
-        <select id="gender">
-          <option value="Male">Male</option>
-          <option value="Female">Female</option>
-        </select>
-        <button type="submit">Enter</button>
-      </form>
+    <div id="container">
+        <div id="chat-rooms">
+            <h2>Select a Room</h2>
+            <button id="room1">Room 1</button>
+            <button id="room2">Room 2</button>
+            <button id="room3">Room 3</button>
+            <button id="room4">Room 4</button>
+        </div>
+        <div id="chat">
+            <div id="messages"></div>
+            <input id="message-input" placeholder="Type your message..." />
+            <button id="send-button">Send</button>
+            <div id="typing-indicator" style="display: none;">User is typing...</div>
+        </div>
+    </div>
 
-      <nav class="rooms">
-        <button data-room="global" class="active">🌍 Global</button>
-        <button data-room="m2m">👨 M2M</button>
-        <button data-room="m2f">👩‍❤️‍👨 M2F</button>
-        <button data-room="f2f">👩 F2F</button>
-      </nav>
-    </aside>
-
-    <main class="chat">
-      <header class="chat-header">
-        <div id="roomTitle">Global</div>
-        <div id="userInfo"></div>
-      </header>
-
-      <ul id="messages" class="messages"></ul>
-
-      <div class="composer">
-        <input id="messageInput" placeholder="Type a message...">
-        <button id="sendBtn">Send</button>
-      </div>
-    </main>
-  </div>
-
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/app.js"></script>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
